@@ -119,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--db-name",
-        default=os.getenv("MONGO_DB", "ds4300_hw6"),
+        default=os.getenv("MONGO_DB", "HW6"),
         help="MongoDB database name.",
     )
     parser.add_argument(
