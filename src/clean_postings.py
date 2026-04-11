@@ -72,26 +72,88 @@ STATE_MAP = {
 
 
 ROLE_PATTERNS = [
-    ("Machine Learning Engineer", [r"\bmachine learning engineer\b"]),
     (
-        "ML Software Engineer",
+        "Applied Scientist / Research",
         [
-            r"\bsoftware engineer,\s*machine learning\b",
-            r"\bai/ml software engineer\b",
-            r"\bml software engineer\b",
+            r"\bapplied scientist\b",
+            r"\bresearch scientist\b",
+            r"\bmachine learning research engineer\b",
+            r"\bresearch engineer\b",
+            r"\bresearcher\s*/\s*engineer\b",
         ],
     ),
     (
         "Data Scientist",
-        [r"\bdata scientist\b", r"\bartificial intelligence / data scientist\b"],
+        [
+            r"\bdata scientist\b",
+            r"\bartificial intelligence\s*/\s*data scientist\b",
+            r"\bdata science intern\b",
+        ],
     ),
-    ("Applied Scientist", [r"\bapplied scientist\b"]),
+    (
+        "ML Platform / MLOps / Infrastructure",
+        [
+            r"\bmlops\b",
+            r"\bml ops\b",
+            r"\bmachine learning operations\b",
+            r"\binfrastructure\b",
+            r"\bplatform\b",
+            r"\bmodel serving\b",
+            r"\btraining platform\b",
+            r"\bai platform\b",
+            r"\bdevops\b",
+        ],
+    ),
+    (
+        "ML Software Engineer",
+        [
+            r"\bsoftware engineer\b.*\bmachine learning\b",
+            r"\bmachine learning\b.*\bsoftware engineer\b",
+            r"\bai/ml software engineer\b",
+            r"\bml software engineer\b",
+            r"\bsoftware development engineer\b.*\bmachine learning\b",
+            r"\bsoftware development engineer\b.*\bml\b",
+            r"\bsystems ml\b",
+            r"\bapplied machine learning backend engineer\b",
+            r"\bai software engineer\b",
+            r"\bsoftware engineer\b.*\bai/llm\b",
+            r"\bsoftware engineer\b.*\bai\b",
+            r"\bsoftware engineer\b.*\bml\b",
+        ],
+    ),
+    (
+        "Data / ML Engineer",
+        [
+            r"\bdata engineer\b",
+            r"\banalytics engineer\b",
+            r"\bdata science engineer\b",
+            r"\bdata/ml engineer\b",
+            r"\bdata / ml engineer\b",
+            r"\bml & data science engineer\b",
+            r"\bai/ml data engineer\b",
+            r"\bmachine learning data engineer\b",
+        ],
+    ),
+    (
+        "Machine Learning Engineer",
+        [
+            r"\bmachine learning engineer\b",
+            r"\bmachine learning \(ml\) engineer\b",
+            r"\bml engineer\b",
+            r"\bmachine learning/ai engineer\b",
+            r"\bmachine learning / ai engineer\b",
+            r"\bai/machine learning engineer\b",
+            r"\bmachine learning & ai engineer\b",
+            r"\bmachine learning model engineer\b",
+            r"\bmachine learning perception engineer\b",
+            r"\bmachine learning soc engineer\b",
+        ],
+    ),
     (
         "AI Engineer",
         [
-            r"\bai engineer\b",
             r"\bartificial intelligence engineer\b",
-            r"\bml engineer\b",
+            r"\bai engineer\b",
         ],
     ),
 ]
@@ -151,6 +213,39 @@ def normalize_state(value: Optional[str]) -> Optional[str]:
         return value.strip().upper()
     return None
 
+def exclude_for_role_analysis(job_title: Optional[str], role_group_value: str) -> bool:
+    title = (job_title or "").strip().lower()
+
+    if not title:
+        return True
+
+    # Generic titles that are too vague for meaningful role comparison
+    generic_patterns = [
+        r"^software engineer$",
+        r"^software developer$",
+        r"^engineer$",
+        r"^developer$",
+        r"^intern$",
+        r"^analyst$",
+    ]
+
+    if any(re.search(pattern, title) for pattern in generic_patterns):
+        return True
+
+    # If it fell into Other AI/Data, exclude only when the title is very generic
+    if role_group_value == "Other AI/Data":
+        vague_terms = [
+            "software engineer",
+            "developer",
+            "engineer",
+            "technical",
+            "specialist",
+        ]
+        if any(term in title for term in vague_terms):
+            return True
+
+    return False
+
 
 def parse_posted_date(value: Optional[str]) -> Dict[str, Optional[str]]:
     if not value:
@@ -165,14 +260,23 @@ def parse_posted_date(value: Optional[str]) -> Dict[str, Optional[str]]:
 
 def role_group(job_title: Optional[str]) -> str:
     title = (job_title or "").strip().lower()
+
     for group, patterns in ROLE_PATTERNS:
         for pattern in patterns:
             if re.search(pattern, title):
                 return group
-    if "engineer" in title and ("ai" in title or "ml" in title):
-        return "AI Engineer"
+
+    # fallback for ambiguous AI/ML engineering titles
+    if "engineer" in title and (
+        "machine learning" in title
+        or re.search(r"\bml\b", title)
+        or "ai" in title
+    ):
+        return "Machine Learning Engineer"
+
     if "data" in title:
         return "Other AI/Data"
+
     return "Other AI/Data"
 
 
@@ -198,6 +302,7 @@ def cleaned_document(raw_doc: Dict[str, Any]) -> Dict[str, Any]:
     company_desc = normalize_whitespace(raw_doc.get("company_description"))
     job_desc = normalize_whitespace(raw_doc.get("job_description_text"))
     date_bits = parse_posted_date(raw_doc.get("job_posted_date"))
+    role = role_group(raw_doc.get("job_title"))
 
     return {
         "source_name": raw_doc.get("source_name"),
@@ -220,9 +325,12 @@ def cleaned_document(raw_doc: Dict[str, Any]) -> Dict[str, Any]:
             **date_bits,
             "state": normalize_state(raw_doc.get("company_address_region")),
             "city": normalize_whitespace(raw_doc.get("company_address_locality")),
-            "role_group": role_group(raw_doc.get("job_title")),
+            "role_group": role,
             "seniority_group": seniority_group(raw_doc.get("seniority_level")),
             "exclude_for_assignment": infer_exclusion(company_desc, job_desc),
+            "exclude_for_role_analysis": exclude_for_role_analysis(
+                raw_doc.get("job_title"), role
+            ),
         },
         "skills": {
             "programming": [],
@@ -243,6 +351,7 @@ def ensure_indexes(collection) -> None:
     collection.create_index("normalized.state")
     collection.create_index("normalized.role_group")
     collection.create_index("normalized.exclude_for_assignment")
+    collection.create_index("normalized.exclude_for_role_analysis")
 
 
 def main() -> None:
