@@ -14,7 +14,9 @@ from pymongo import MongoClient, UpdateOne
 SKILL_PATTERNS: Dict[str, Dict[str, List[str]]] = {
     "programming": {
         "Python": [r"\bpython\b"],
-        "SQL": [r"\bsql\b", r"\bpostgresql\b", r"\bmysql\b"],
+        "SQL": [r"\bsql\b"],
+        "PostgreSQL": [r"\bpostgres(?:ql)?\b"],
+        "MySQL": [r"\bmysql\b"],
         "R": [r"(?<![A-Za-z0-9])R(?![A-Za-z0-9])"],
         "Java": [r"\bjava\b"],
         "Scala": [r"\bscala\b"],

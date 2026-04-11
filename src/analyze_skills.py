@@ -17,6 +17,7 @@ SELECTED_TREND_SKILLS = ["Python", "SQL", "AWS", "PyTorch", "LLM"]
 SELECTED_ROLE_SKILLS = ["Python", "SQL", "AWS", "PyTorch", "TensorFlow", "Docker", "Kubernetes", "LLM"]
 SELECTED_SENIORITY_SKILLS = ["Python", "SQL", "AWS", "Docker", "Kubernetes", "PyTorch", "LLM"]
 SELECTED_STATE_SKILLS = ["AWS", "Azure", "GCP", "PyTorch", "TensorFlow", "Docker", "Kubernetes"]
+SELECTED_CLOUD_SKILLS = ["AWS", "Azure", "GCP", "Docker", "Kubernetes"]
 
 BASE_FILTER = {
     "normalized.exclude_for_assignment": False,
@@ -215,42 +216,48 @@ def seniority_skill_matrix(collection, selected_skills: List[str]) -> List[Dict[
     return rows
 
 
-def state_skill_matrix(collection, selected_skills: List[str], min_postings: int = 10) -> List[Dict[str, Any]]:
+def state_cloud_summary(collection, cloud_skills: List[str], min_postings: int = 20) -> List[Dict[str, Any]]:
     pipeline = [
         {"$match": {**BASE_FILTER, "normalized.state": {"$ne": None}}},
         {
             "$group": {
                 "_id": "$normalized.state",
                 "total_postings": {"$sum": 1},
-                **{
-                    skill: {
-                        "$sum": {
-                            "$cond": [{"$in": [skill, "$skills.all"]}, 1, 0]
-                        }
+                "cloud_any_count": {
+                    "$sum": {
+                        "$cond": [
+                            {
+                                "$gt": [
+                                    {"$size": {"$setIntersection": ["$skills.all", cloud_skills]}},
+                                    0,
+                                ]
+                            },
+                            1,
+                            0,
+                        ]
                     }
-                    for skill in selected_skills
                 },
             }
         },
         {"$match": {"total_postings": {"$gte": min_postings}}},
-        {"$sort": {"total_postings": -1, "_id": 1}},
     ]
 
     rows = []
     for doc in collection.aggregate(pipeline):
-        state = doc["_id"]
         total = doc["total_postings"]
-        for skill in selected_skills:
-            count = doc.get(skill, 0)
-            rows.append(
-                {
-                    "state": state,
-                    "skill": skill,
-                    "posting_count": count,
-                    "posting_share": round(count / total, 4) if total else 0.0,
-                    "state_total_postings": total,
-                }
-            )
+        cloud_any_count = doc["cloud_any_count"]
+        rows.append(
+            {
+                "state": doc["_id"],
+                "cloud_any_count": cloud_any_count,
+                "cloud_any_share": round(cloud_any_count / total, 4) if total else 0.0,
+                "state_total_postings": total,
+            }
+        )
+
+    rows.sort(
+        key=lambda x: (-x["cloud_any_share"], -x["state_total_postings"], x["state"])
+    )
     return rows
 
 
@@ -292,7 +299,7 @@ def main() -> None:
     trends = monthly_skill_trends(collection, SELECTED_TREND_SKILLS)
     role_matrix = role_skill_matrix(collection, SELECTED_ROLE_SKILLS)
     seniority_matrix = seniority_skill_matrix(collection, SELECTED_SENIORITY_SKILLS)
-    state_matrix = state_skill_matrix(collection, SELECTED_STATE_SKILLS, min_postings=10)
+    state_cloud = state_cloud_summary(collection, SELECTED_CLOUD_SKILLS, min_postings=20)
     pairs = skill_pairs(collection, min_pair_count=5)
 
     write_json(output_dir / "summary.json", summary)
@@ -300,7 +307,7 @@ def main() -> None:
     write_csv(output_dir / "monthly_skill_trends.csv", trends)
     write_csv(output_dir / "role_skill_matrix.csv", role_matrix)
     write_csv(output_dir / "seniority_skill_matrix.csv", seniority_matrix)
-    write_csv(output_dir / "state_skill_matrix.csv", state_matrix)
+    write_csv(output_dir / "state_cloud_summary.csv", state_cloud)
     write_csv(output_dir / "skill_pairs.csv", pairs)
 
     print("Analysis exports complete.")
