@@ -1,21 +1,19 @@
-"""Generate insightful visuals from skill analysis"""
+# Assignment: DS4300 Homework 6
+# Written by: Gavin Bond & Erika Sohn
+# Function: Generate insightful visuals from skill analysis
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Iterable, List
+from typing import List 
 
 import matplotlib.pyplot as plt
-from matplotlib.ticker import PercentFormatter
-from matplotlib.transforms import blended_transform_factory
-import numpy as np
-import pandas as pd
-
-
-DEFAULT_TREND_SKILLS = ["Python", "SQL", "AWS", "PyTorch", "LLM"]
-
-DEFAULT_SENIORITY_SKILLS = ["SQL", "AWS", "Docker", "PyTorch", "LLM"]
+import matplotlib.patches as mpatches
+from matplotlib.ticker import PercentFormatter   
+from matplotlib.transforms import blended_transform_factory  
+import numpy as np                               
+import pandas as pd                              
 
 SENIORITY_ORDER = [
     "Internship",
@@ -37,15 +35,32 @@ DEFAULT_HEATMAP_SKILLS = [
 ]
 DEFAULT_STATE_SKILLS = ["AWS", "Azure", "GCP", "Docker", "Kubernetes"]
 
+DEFAULT_SENIORITY_SKILLS = ["SQL", "AWS", "Docker", "PyTorch", "LLM"]
+
 ROLE_ORDER = [
     "Machine Learning Engineer",
-    "ML Software Engineer",
-    "ML Platform / MLOps / Infrastructure",
     "Data Scientist",
+    "ML Software Engineer",
+    "Other AI/Data",
+    "ML Platform / MLOps / Infrastructure",
     "Data / ML Engineer",
     "Applied Scientist / Research",
-    "AI Engineer",
-    "Other AI/Data",
+]
+
+CATEGORY_COLORS = {
+    "programming":      "#4C72B0",
+    "ml_frameworks":    "#DD8452",
+    "data_engineering": "#55A868",
+    "cloud_platforms":  "#C44E52",
+    "databases":        "#8172B2",
+    "analytics_bi":     "#937860",
+    "llm_genai":        "#DA8BC3",
+    "unknown":          "#CCCCCC",
+}
+
+PMI_SKILLS = [
+    "PyTorch", "TensorFlow", "LLM", "NLP",
+    "Generative AI", "AWS", "Spark", "SQL",
 ]
 
 
@@ -92,15 +107,32 @@ def load_csv(analysis_dir: Path, filename: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def plot_top_skills(df: pd.DataFrame, out_dir: Path, top_n: int = 15) -> None:
+def plot_top_skills(
+        top_skills_df: pd.DataFrame, 
+        top_skills_cat_df: pd.DataFrame, 
+        out_dir: Path, 
+        top_n: int = 15
+) -> None:
+    
+    # zip "skill" and "categories" columns into a dict 
+    skill_to_cat = dict(zip(top_skills_cat_df["skill"], top_skills_cat_df["category"]))
+
+    # build skill -> category lookup from top_skills_by_category.csv
+    
     chart_df = (
-        df.sort_values(["posting_share", "posting_count"], ascending=[False, False])
+        top_skills_df.sort_values(["posting_share", "posting_count"], ascending=[False, False])
         .head(top_n)
         .sort_values("posting_share", ascending=True)
     )
 
+    colors = [
+        CATEGORY_COLORS.get(skill_to_cat.get(skill, "unknown"), CATEGORY_COLORS["unknown"])
+        for skill in chart_df["skill"]
+    ]
+
+    # for every skill, apply color respective to its category
     fig, ax = plt.subplots(figsize=(10, 7))
-    ax.barh(chart_df["skill"], chart_df["posting_share"])
+    ax.barh(chart_df["skill"], chart_df["posting_share"], color=colors)
     ax.set_title("Top Skills in U.S. AI/ML Job Postings")
     ax.set_xlabel("Share of postings")
     ax.set_ylabel("Skill")
@@ -117,48 +149,40 @@ def plot_top_skills(df: pd.DataFrame, out_dir: Path, top_n: int = 15) -> None:
             va="center",
             fontsize=9,
         )
+    
+    present_cats = set(skill_to_cat.get(s, "unknown") for s in chart_df["skill"])
+    legend_patches = [
+        mpatches.Patch(color=CATEGORY_COLORS[cat], label=cat.replace("_", " ").title())
+        for cat in CATEGORY_COLORS if cat in present_cats
+    ]
+    ax.legend(handles=legend_patches, loc="lower right", fontsize=8, title="Category")
+    save_figure(fig, out_dir, "01_top_skills_by_category")
 
-    save_figure(fig, out_dir, "01_top_skills")
-
-
-def plot_skill_timeline(
-    df: pd.DataFrame,
+def plot_tfidf(
+    tfidf_df: pd.DataFrame,
     out_dir: Path,
-    selected_skills: List[str],
-    min_monthly_postings: int = 8,
-    smoothing_window: int = 2,
 ) -> None:
-    chart_df = df[df["skill"].isin(selected_skills)].copy()
-    chart_df = chart_df[chart_df["monthly_total_postings"] >= min_monthly_postings].copy()
+    
+    roles = tfidf_df["role"].unique()
+    n_roles = len(roles)
+    ncols = 2
+    nrows = (n_roles + 1) // ncols 
+    fig, axes = plt.subplots(nrows, ncols, figsize=(14, nrows * 3.5))
+    axes = axes.flatten()
+    
+    for i, role in enumerate(roles):
+        role_df = tfidf_df[tfidf_df["role"] == role].sort_values("score", ascending=True)
+        axes[i].barh(role_df["term"], role_df["score"], color="#4C72B0")
+        axes[i].set_title(role, fontsize=9, fontweight="bold")
+        axes[i].set_xlabel("TF-IDF score", fontsize=8)
+        axes[i].tick_params(axis="y", labelsize=8)
 
-    chart_df["posted_month"] = pd.to_datetime(chart_df["posted_month"], format="%Y-%m")
-    chart_df = chart_df.sort_values(["posted_month", "skill"])
+    # hide unused subplots for odd number of roles 
+    for j in range(i + 1, len(axes)):
+        axes[j].set_visible(False)
 
-    pivot = chart_df.pivot(
-        index="posted_month",
-        columns="skill",
-        values="posting_share",
-    )
-
-    ordered_cols = [skill for skill in selected_skills if skill in pivot.columns]
-    pivot = pivot[ordered_cols]
-
-    # Light smoothing only
-    pivot = pivot.rolling(window=smoothing_window, min_periods=1).mean()
-
-    fig, ax = plt.subplots(figsize=(11, 6))
-    for skill in pivot.columns:
-        ax.plot(pivot.index, pivot[skill], marker="o", linewidth=2, label=skill)
-
-    ax.set_title("Skill Demand Over Time")
-    ax.set_xlabel("Month")
-    ax.set_ylabel(f"Share of postings ({smoothing_window}-month rolling average)")
-    ax.yaxis.set_major_formatter(PercentFormatter(1.0))
-    ax.legend()
-    ax.tick_params(axis="x", rotation=45)
-
-    save_figure(fig, out_dir, "02_skill_timeline")
-
+    fig.suptitle("Distinctive Terms by Role Group (TF-IDF)", fontsize=13, fontweight="bold")
+    save_figure(fig, out_dir, "02_tfidf_by_role")
 
 def plot_role_heatmap(
     df: pd.DataFrame, out_dir: Path, selected_skills: List[str]
@@ -331,58 +355,42 @@ def plot_seniority_grouped_bars(
 
     save_figure(fig, out_dir, "05_seniority_skill_bars")
 
-def plot_skill_cooccurrence_heatmap(
+def plot_skill_cooccurrence_pmi(
     pairs_df: pd.DataFrame,
     top_skills_df: pd.DataFrame,
     out_dir: Path,
     top_n: int = 8,
     exclude_skills: tuple[str, ...] = ("Python",),
 ) -> None:
-    selected_skills = [
-        "PyTorch",
-        "TensorFlow",
-        "LLM",
-        "NLP",
-        "Generative AI",
-        "AWS",
-        "Spark",
-        "SQL",
-    ]
+    total = top_skills_df["posting_count"].sum()
     posting_count_map = dict(zip(top_skills_df["skill"], top_skills_df["posting_count"]))
 
+    # create a pair of skill a and skill b
     filtered_pairs = pairs_df[
-        pairs_df["skill_a"].isin(selected_skills) & pairs_df["skill_b"].isin(selected_skills)
+        pairs_df["skill_a"].isin(PMI_SKILLS) & pairs_df["skill_b"].isin(PMI_SKILLS)
     ].copy()
 
-    matrix = pd.DataFrame(
-        0.0,
-        index=selected_skills,
-        columns=selected_skills,
-    )
+    # create arr of 0.0 and populate with PMI_SKILLS
+    matrix = pd.DataFrame(0.0, index=PMI_SKILLS, columns=PMI_SKILLS)
 
+    # calculate p(a), p(b), and p(a, b)
     for _, row in filtered_pairs.iterrows():
-        a = row["skill_a"]
-        b = row["skill_b"]
-        pair_count = row["pair_count"]
+        a, b = row["skill_a"], row["skill_b"]
+        p_a = posting_count_map.get(a, 0) / total
+        p_b = posting_count_map.get(b, 0) / total
+        p_ab = row["pair_count"] / total
 
-        count_a = posting_count_map.get(a, 0)
-        count_b = posting_count_map.get(b, 0)
+        # PMI = log(P (a, b) / (P(a) * P(b)))
+        # use np to apply log() 
+        pmi = np.log(p_ab / (p_a * p_b))
+        matrix.loc[a, b] = round(pmi, 4) # set cell value to pmi score 
+        matrix.loc[b, a] = round(pmi, 4)
 
-        denom = count_a + count_b - pair_count
-        jaccard = pair_count / denom if denom else 0.0
-
-        matrix.loc[a, b] = jaccard
-        matrix.loc[b, a] = jaccard
-
-    # Blank diagonal for readability
-    np.fill_diagonal(matrix.values, np.nan)
+    np.fill_diagonal(matrix.values, np.nan) # nan diagonal values 
 
     fig, ax = plt.subplots(figsize=(9, 7))
-    im = ax.imshow(matrix.values, aspect="auto")
-
-    ax.set_title("Skill Co-occurrence Heatmap (Top Non-Python Skills)")
-    ax.set_xlabel("Skill")
-    ax.set_ylabel("Skill")
+    im = ax.imshow(matrix.values, aspect="auto", cmap="YlOrRd") 
+    ax.set_title("Skill Co-occurrence Heatmap (PMI)")
     ax.set_xticks(range(len(matrix.columns)))
     ax.set_xticklabels(matrix.columns, rotation=45, ha="right")
     ax.set_yticks(range(len(matrix.index)))
@@ -392,22 +400,12 @@ def plot_skill_cooccurrence_heatmap(
         for j in range(matrix.shape[1]):
             val = matrix.iloc[i, j]
             if pd.notna(val):
-                text_color = "white" if val >= 0.25 else "black"
-                ax.text(
-                    j,
-                    i,
-                    f"{val:.0%}",
-                    ha="center",
-                    va="center",
-                    fontsize=8,
-                    color=text_color,
-                )
+                text_color = "white" if val >= 2.0 else "black"
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center", fontsize=8, color=text_color)
 
-    cbar = fig.colorbar(im, ax=ax, label="Jaccard similarity")
-    cbar.ax.yaxis.set_major_formatter(PercentFormatter(1.0))
-
-    save_figure(fig, out_dir, "06_skill_cooccurrence_heatmap")
-
+    fig.colorbar(im, ax=ax, label="PMI score") 
+    save_figure(fig, out_dir, "06_skill_cooccurrence_pmi")
+   
 
 def main() -> None:
     args = parse_args()
@@ -415,45 +413,22 @@ def main() -> None:
     figures_dir = ensure_dir(args.figures_dir)
 
     top_skills_df = load_csv(analysis_dir, "top_skills.csv")
-    monthly_trends_df = load_csv(analysis_dir, "monthly_skill_trends.csv")
+    top_skills_by_cat_df = load_csv(analysis_dir, "top_skills_by_category.csv")  
+    tfidf_df = load_csv(analysis_dir, "nlp_tfidf.csv")                           
     role_matrix_df = load_csv(analysis_dir, "role_skill_matrix.csv")
     state_cloud_df = load_csv(analysis_dir, "state_cloud_summary.csv")
     seniority_matrix_df = load_csv(analysis_dir, "seniority_skill_matrix.csv")
     pairs_df = load_csv(analysis_dir, "skill_pairs.csv")
 
-    plot_top_skills(top_skills_df, figures_dir, top_n=args.top_n)
-    plot_skill_timeline(
-        monthly_trends_df,
-        figures_dir,
-        selected_skills=DEFAULT_TREND_SKILLS,
-        min_monthly_postings=8,
-        smoothing_window=2,
-    )
-    plot_role_heatmap(
-        role_matrix_df,
-        figures_dir,
-        selected_skills=DEFAULT_HEATMAP_SKILLS,
-    )
-    plot_state_bar_chart(
-        state_cloud_df,
-        figures_dir,
-        top_n=10,
-    )
-    plot_seniority_grouped_bars(
-    seniority_matrix_df,
-    figures_dir,
-    selected_skills=DEFAULT_SENIORITY_SKILLS,
-    )
-    plot_skill_cooccurrence_heatmap(
-        pairs_df,
-        top_skills_df,
-        figures_dir,
-        top_n=8,
-        exclude_skills=("Python",),
-    )
+    plot_top_skills(top_skills_df, top_skills_by_cat_df, figures_dir, top_n=args.top_n)  
+    plot_tfidf(tfidf_df, figures_dir)                                                      
+    plot_role_heatmap(role_matrix_df, figures_dir, selected_skills=DEFAULT_HEATMAP_SKILLS)
+    plot_state_bar_chart(state_cloud_df, figures_dir, top_n=10)
+    plot_seniority_grouped_bars(seniority_matrix_df, figures_dir, selected_skills=DEFAULT_SENIORITY_SKILLS)
+    plot_skill_cooccurrence_pmi(pairs_df, top_skills_df, figures_dir)                    
 
-    print(f"Saved figures to {figures_dir.resolve()}")
-
+    print(f"Saved 6 figures to {figures_dir.resolve()}")
+    
 
 if __name__ == "__main__":
     main()

@@ -9,14 +9,12 @@ import json
 import os
 from itertools import combinations
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
-
+from typing import Any, Dict, List
 from pymongo import MongoClient
 
 SELECTED_TREND_SKILLS = ["Python", "SQL", "AWS", "PyTorch", "LLM"]
 SELECTED_ROLE_SKILLS = ["Python", "SQL", "AWS", "PyTorch", "TensorFlow", "Docker", "Kubernetes", "LLM"]
 SELECTED_SENIORITY_SKILLS = ["Python", "SQL", "AWS", "Docker", "Kubernetes", "PyTorch", "LLM"]
-SELECTED_STATE_SKILLS = ["AWS", "Azure", "GCP", "PyTorch", "TensorFlow", "Docker", "Kubernetes"]
 SELECTED_CLOUD_SKILLS = ["AWS", "Azure", "GCP", "Docker", "Kubernetes"]
 
 BASE_FILTER = {
@@ -26,7 +24,7 @@ BASE_FILTER = {
 
 ROLE_FILTER = {
     "normalized.exclude_for_assignment": False,
-    "normalized.exclude_for_role_analysis": False,
+    "normalized.exclude_for_role_analysis": False, 
     "skills.all": {"$exists": True, "$ne": []},
 }
 
@@ -77,6 +75,9 @@ def write_json(path: Path, payload: Dict[str, Any]) -> None:
 
 
 def top_skills(collection) -> List[Dict[str, Any]]:
+    """
+    Top skills across ALL postings regarless of category
+    """
     pipeline = [
         {"$match": BASE_FILTER},
         {"$unwind": "$skills.all"},
@@ -94,6 +95,55 @@ def top_skills(collection) -> List[Dict[str, Any]]:
             }
         )
     return results
+
+def top_skills_by_category(collection) -> List[Dict[str, Any]]:
+    """
+    Identifies top 3 skills within each skill category across ALL postings
+    """
+    
+    # define categories defined in clean_postings.py
+    categories = [
+        "programming",
+        "ml_frameworks",
+        "data_engineering",
+        "cloud_platforms",
+        "databases",
+        "analytics_bi",
+        "llm_genai",
+    ]
+
+    # count total valid documents that pass base filter 
+    total_docs = collection.count_documents(BASE_FILTER)
+    rows = []
+
+    # per category, run agg pipeline to find top 3 skills by posting count 
+    for category in categories:
+        pipeline = [
+            {"$match": BASE_FILTER},
+            {"$unwind": f"$skills.{category}"},
+            {
+                "$group": {
+                    "_id": f"$skills.{category}",
+                    "posting_count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"posting_count": -1}},
+            {"$limit": 3},
+        ]
+
+        # append each row with category lavel and computed posting share  
+        for doc in collection.aggregate(pipeline):
+            rows.append(
+                {
+                    "category": category,
+                    "skill": doc["_id"],
+                    "posting_count": doc["posting_count"],
+                    "posting_share": round(doc["posting_count"] / total_docs, 4)
+                    if total_docs
+                    else 0.0,
+                }
+            )
+    return rows
 
 
 def monthly_skill_trends(collection, selected_skills: List[str]) -> List[Dict[str, Any]]:
@@ -141,6 +191,9 @@ def monthly_skill_trends(collection, selected_skills: List[str]) -> List[Dict[st
 
 
 def role_skill_matrix(collection, selected_skills: List[str]) -> List[Dict[str, Any]]:
+    """
+    Per role group, how often each unique skill appears 
+    """
     pipeline = [
         {"$match": ROLE_FILTER},
         {
@@ -296,7 +349,7 @@ def main() -> None:
 
     summary = build_summary(collection)
     top = top_skills(collection)
-    trends = monthly_skill_trends(collection, SELECTED_TREND_SKILLS)
+    top_by_cat = top_skills_by_category(collection)      
     role_matrix = role_skill_matrix(collection, SELECTED_ROLE_SKILLS)
     seniority_matrix = seniority_skill_matrix(collection, SELECTED_SENIORITY_SKILLS)
     state_cloud = state_cloud_summary(collection, SELECTED_CLOUD_SKILLS, min_postings=20)
@@ -304,13 +357,15 @@ def main() -> None:
 
     write_json(output_dir / "summary.json", summary)
     write_csv(output_dir / "top_skills.csv", top)
-    write_csv(output_dir / "monthly_skill_trends.csv", trends)
+    write_csv(output_dir / "top_skills_by_category.csv", top_by_cat) 
     write_csv(output_dir / "role_skill_matrix.csv", role_matrix)
     write_csv(output_dir / "seniority_skill_matrix.csv", seniority_matrix)
     write_csv(output_dir / "state_cloud_summary.csv", state_cloud)
     write_csv(output_dir / "skill_pairs.csv", pairs)
 
     print("Analysis exports complete.")
+    print(f"Top skills: {len(top)} rows")
+    print(f"Top skills by category: {len(top_by_cat)} rows")  # NEW
     print(json.dumps(summary, indent=2))
 
 
