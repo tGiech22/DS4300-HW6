@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from pymongo import MongoClient, UpdateOne
 
-
+# State abbreviation pattern standardization
 STATE_MAP = {
     "alabama": "AL",
     "alaska": "AK",
@@ -73,7 +73,7 @@ STATE_MAP = {
     "wyoming": "WY",
 }
 
-
+# Role group pattern splitting
 ROLE_PATTERNS = [
     (
         "Applied Scientist / Research",
@@ -161,7 +161,7 @@ ROLE_PATTERNS = [
     ),
 ]
 
-
+# Excluded sports and games patterns
 SPORTS_OR_GAMES_PATTERNS = [
     r"\bsports?\b",
     r"\bfitness\b",
@@ -172,7 +172,7 @@ SPORTS_OR_GAMES_PATTERNS = [
     r"\besports\b",
 ]
 
-
+# Parser to read MongoDB command-line connection & db arguments
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Normalize raw job postings and store cleaned documents."
@@ -201,12 +201,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def normalize_whitespace(value: Optional[str]) -> Optional[str]:
+    """
+    Cleans texts by removing whitespace
+    """
     if not value:
         return None
     return re.sub(r"\s+", " ", value).strip()
 
 
 def normalize_state(value: Optional[str]) -> Optional[str]:
+    """
+    Converts state fields into abbreviated 2 letter code
+    """
     if not value:
         return None
     normalized = value.strip().lower()
@@ -217,6 +223,10 @@ def normalize_state(value: Optional[str]) -> Optional[str]:
     return None
 
 def exclude_for_role_analysis(job_title: Optional[str], role_group_value: str) -> bool:
+    """
+    Exclusion determination for job posting based on generic language patterns and other
+    filtering behavior
+    """
     title = (job_title or "").strip().lower()
 
     if not title:
@@ -251,6 +261,9 @@ def exclude_for_role_analysis(job_title: Optional[str], role_group_value: str) -
 
 
 def parse_posted_date(value: Optional[str]) -> Dict[str, Optional[str]]:
+    """
+    Normalizes raw posting dates into dictionary structure
+    """
     if not value:
         return {"posted_date": None, "posted_month": None, "posted_year": None}
     parsed = datetime.strptime(value, "%Y-%m-%d")
@@ -262,6 +275,9 @@ def parse_posted_date(value: Optional[str]) -> Dict[str, Optional[str]]:
 
 
 def role_group(job_title: Optional[str]) -> str:
+    """
+    Assigns roles into groups as determined by role patterns variable
+    """
     title = (job_title or "").strip().lower()
 
     for group, patterns in ROLE_PATTERNS:
@@ -284,6 +300,9 @@ def role_group(job_title: Optional[str]) -> str:
 
 
 def seniority_group(value: Optional[str]) -> str:
+    """
+    Standardizes posting seniority level into usable analysis groups
+    """
     normalized = (value or "").strip()
     if normalized in {"Internship", "Entry level", "Associate", "Mid-Senior level"}:
         return normalized
@@ -295,6 +314,9 @@ def seniority_group(value: Optional[str]) -> str:
 
 
 def infer_exclusion(company_description: Optional[str], job_description: Optional[str]) -> bool:
+    """
+    Checks company & job description for sports & games keywords, determines exclusion.
+    """
     combined = " ".join(
         filter(None, [company_description or "", job_description or ""])
     ).lower()
@@ -302,6 +324,10 @@ def infer_exclusion(company_description: Optional[str], job_description: Optiona
 
 
 def cleaned_document(raw_doc: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Builds final cleaned version of individual postings, keeping raw values in 
+    subdocument & converting / pulling normalized values to normalized subdocument.
+    """
     company_desc = normalize_whitespace(raw_doc.get("company_description"))
     job_desc = normalize_whitespace(raw_doc.get("job_description_text"))
     date_bits = parse_posted_date(raw_doc.get("job_posted_date"))
@@ -349,6 +375,10 @@ def cleaned_document(raw_doc: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def ensure_indexes(collection) -> None:
+    """
+    Creates indexes for MongoDB, preserving posting uniqueness, filtering, and
+    later analysis.
+    """
     collection.create_index([("source_name", 1), ("source_id", 1)], unique=True)
     collection.create_index("normalized.posted_month")
     collection.create_index("normalized.state")
@@ -358,6 +388,10 @@ def ensure_indexes(collection) -> None:
 
 
 def main() -> None:
+    """
+    Connects to MongoDB, reads raw postings, converts to cleaned documents, writes results into
+    clean collection with bulk upserts.
+    """
     args = parse_args()
     client = MongoClient(args.mongo_uri)
     raw_collection = client[args.db_name][args.raw_collection]

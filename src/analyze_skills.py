@@ -320,6 +320,9 @@ def build_summary(collection) -> Dict[str, Any]:
 
 
 def main() -> None:
+    """
+    Connects to mongo, runs analysis and builds output structures, writes to output directory.
+    """
     args = parse_args()
     output_dir = ensure_output_dir(args.output_dir)
 

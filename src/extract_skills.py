@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 
 from pymongo import MongoClient, UpdateOne
 
-
+# Defining skill-extraction vocab patterns
 SKILL_PATTERNS: Dict[str, Dict[str, List[str]]] = {
     "programming": {
         "Python": [r"\bpython\b"],
@@ -77,6 +77,9 @@ SKILL_PATTERNS: Dict[str, Dict[str, List[str]]] = {
 
 
 def parse_args() -> argparse.Namespace:
+    """
+    Parser to read MongoDB command-line connection & db arguments
+    """
     parser = argparse.ArgumentParser(
         description="Extract skills from cleaned postings and store them in MongoDB."
     )
@@ -99,6 +102,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def detect_skills(text: str) -> Dict[str, List[str]]:
+    """
+    Scans text against defined skill patterns, returns
+    dictionary of skills by category and overall "all" skill list.
+    """
     found: Dict[str, List[str]] = {category: [] for category in SKILL_PATTERNS}
     all_skills: List[str] = []
 
@@ -115,6 +122,9 @@ def detect_skills(text: str) -> Dict[str, List[str]]:
 
 
 def build_description(doc: Dict) -> str:
+    """
+    Builds skill-detection text input based on cleaned title & company / job description.
+    """
     raw = doc.get("raw", {})
     return " ".join(
         part for part in [raw.get("job_title"), raw.get("company_description"), raw.get("job_description_text")] if part
@@ -122,6 +132,11 @@ def build_description(doc: Dict) -> str:
 
 
 def main() -> None:
+    """
+    Connects to MongoDB, reads cleaned postings, builds combined text list,
+    detects skills, stores results into skills field, created skill indexing, and 
+    prints overall posting summary.
+    """
     args = parse_args()
     client = MongoClient(args.mongo_uri)
     collection = client[args.db_name][args.collection]

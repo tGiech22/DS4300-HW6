@@ -12,9 +12,12 @@ from pymongo import MongoClient
 import numpy as np
 import argparse
 
+# Output path & global parameters
 FIGURES_DIR = Path("outputs/figures")
 MIN_POSTINGS = 15
 TOP_N = 10
+
+# Additional stopwords ourside of nltk corpus
 EXTRA_STOPWORDS = {
     "experience", "work", "working", "team", "role", "job",
     "skills", "ability", "strong", "knowledge", "using",
