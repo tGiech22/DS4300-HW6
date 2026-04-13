@@ -1,5 +1,8 @@
-#!/usr/bin/env python3
-"""Normalize raw postings and write enriched documents back to MongoDB."""
+"""
+Assignment: DS4300 Homework 6
+Written by: Tony Geich
+Function: Normalize raw postings and write enriched documents back to MongoDB.
+"""
 
 from __future__ import annotations
 

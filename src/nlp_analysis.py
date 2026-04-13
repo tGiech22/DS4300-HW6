@@ -6,8 +6,7 @@ import os, re
 from pathlib import Path
 from collections import defaultdict
 import matplotlib.pyplot as plt
-from wordcloud import WordCloud
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer 
 from nltk.corpus import stopwords
 from pymongo import MongoClient
 import numpy as np

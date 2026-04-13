@@ -1,5 +1,9 @@
-"""Analyze and generate patterns & statistical findings of
- job posting skills and relationships between other variables for csv output"""
+"""
+Assignment: DS4300 Homework 6
+Written by: Gavin Bond
+Function: Analyze and generate patterns & statistical findings of
+ job posting skills and relationships between other variables for csv output
+"""
 
 from __future__ import annotations
 
@@ -12,23 +16,25 @@ from pathlib import Path
 from typing import Any, Dict, List
 from pymongo import MongoClient
 
-SELECTED_TREND_SKILLS = ["Python", "SQL", "AWS", "PyTorch", "LLM"]
+# Various role groupings to be used in analysis
 SELECTED_ROLE_SKILLS = ["Python", "SQL", "AWS", "PyTorch", "TensorFlow", "Docker", "Kubernetes", "LLM"]
 SELECTED_SENIORITY_SKILLS = ["Python", "SQL", "AWS", "Docker", "Kubernetes", "PyTorch", "LLM"]
 SELECTED_CLOUD_SKILLS = ["AWS", "Azure", "GCP", "Docker", "Kubernetes"]
 
+# Filter for invalid postings
 BASE_FILTER = {
     "normalized.exclude_for_assignment": False,
     "skills.all": {"$exists": True, "$ne": []},
 }
 
+# Filter for invalid role-specific analysis postings
 ROLE_FILTER = {
     "normalized.exclude_for_assignment": False,
     "normalized.exclude_for_role_analysis": False, 
     "skills.all": {"$exists": True, "$ne": []},
 }
 
-
+# Parser to read MongoDB command-line connection & output location
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyze skill demand from MongoDB.")
     parser.add_argument(
@@ -53,13 +59,13 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
+# Output directory failsafe
 def ensure_output_dir(path: str) -> Path:
     output_dir = Path(path)
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 
-
+# Writes LoDicts to CSV
 def write_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
     if not rows:
         path.write_text("")
@@ -69,14 +75,13 @@ def write_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-
+# Writes dict to JSON
 def write_json(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-
 def top_skills(collection) -> List[Dict[str, Any]]:
     """
-    Top skills across ALL postings regarless of category
+    Top skills across ALL postings regardless of category
     """
     pipeline = [
         {"$match": BASE_FILTER},
@@ -146,49 +151,6 @@ def top_skills_by_category(collection) -> List[Dict[str, Any]]:
     return rows
 
 
-def monthly_skill_trends(collection, selected_skills: List[str]) -> List[Dict[str, Any]]:
-    pipeline = [
-        {"$match": {**BASE_FILTER, "normalized.posted_month": {"$ne": None}}},
-        {
-            "$project": {
-                "posted_month": "$normalized.posted_month",
-                "skills_all": "$skills.all",
-            }
-        },
-        {
-            "$group": {
-                "_id": "$posted_month",
-                "total_postings": {"$sum": 1},
-                **{
-                    skill: {
-                        "$sum": {
-                            "$cond": [{"$in": [skill, "$skills_all"]}, 1, 0]
-                        }
-                    }
-                    for skill in selected_skills
-                },
-            }
-        },
-        {"$sort": {"_id": 1}},
-    ]
-
-    rows = []
-    for doc in collection.aggregate(pipeline):
-        month = doc["_id"]
-        total = doc["total_postings"]
-        for skill in selected_skills:
-            count = doc.get(skill, 0)
-            rows.append(
-                {
-                    "posted_month": month,
-                    "skill": skill,
-                    "posting_count": count,
-                    "posting_share": round(count / total, 4) if total else 0.0,
-                    "monthly_total_postings": total,
-                }
-            )
-    return rows
-
 
 def role_skill_matrix(collection, selected_skills: List[str]) -> List[Dict[str, Any]]:
     """
@@ -232,6 +194,10 @@ def role_skill_matrix(collection, selected_skills: List[str]) -> List[Dict[str, 
 
 
 def seniority_skill_matrix(collection, selected_skills: List[str]) -> List[Dict[str, Any]]:
+    '''
+    Matrix containing prevalence of a selected group of skills across different
+    job posting seniority buckets
+    '''
     pipeline = [
         {"$match": BASE_FILTER},
         {
@@ -270,6 +236,10 @@ def seniority_skill_matrix(collection, selected_skills: List[str]) -> List[Dict[
 
 
 def state_cloud_summary(collection, cloud_skills: List[str], min_postings: int = 20) -> List[Dict[str, Any]]:
+    '''
+    Summary of cloud skill demand per state, computed as number of job postings with atleast one 
+    cloud-based skill per state.
+    '''
     pipeline = [
         {"$match": {**BASE_FILTER, "normalized.state": {"$ne": None}}},
         {
@@ -315,6 +285,10 @@ def state_cloud_summary(collection, cloud_skills: List[str], min_postings: int =
 
 
 def skill_pairs(collection, min_pair_count: int = 5) -> List[Dict[str, Any]]:
+    '''
+    Computes prevalence of skill-pairs in job postings, returns as 
+    LoDicts for all skill pairs above minimum threshhold of postings.
+    '''
     pair_counts: Dict[tuple[str, str], int] = {}
     for doc in collection.find(BASE_FILTER, {"skills.all": 1, "_id": 0}):
         skills = sorted(set(doc.get("skills", {}).get("all", [])))
@@ -331,6 +305,11 @@ def skill_pairs(collection, min_pair_count: int = 5) -> List[Dict[str, Any]]:
 
 
 def build_summary(collection) -> Dict[str, Any]:
+    '''
+    Builds summary of total postings, usable postings for analysis,
+    usable postings for role-specific analysis, and total excluded postings
+    for both filter rules.
+    '''
     return {
         "total_clean_postings": collection.count_documents({}),
         "usable_for_analysis": collection.count_documents(BASE_FILTER),

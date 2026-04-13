@@ -1,5 +1,7 @@
-#!/usr/bin/env python3
-"""Extract skill terms from cleaned postings and update MongoDB."""
+"""
+Assignment: DS4300 Homework 6
+Written by: Tony Geich & Gavin Bond
+Function: Extract skill terms from cleaned postings and update MongoDB."""
 
 from __future__ import annotations
 

@@ -1,5 +1,7 @@
-#!/usr/bin/env python3
-"""Load the raw job postings CSV into MongoDB."""
+"""
+Assignment: DS4300 Homework 6
+Written by: Tony Geich
+Function: Load the raw job postings CSV into MongoDB."""
 
 from __future__ import annotations
 
