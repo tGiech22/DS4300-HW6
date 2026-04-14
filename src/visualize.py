@@ -386,7 +386,8 @@ def plot_skill_cooccurrence_pmi(
         matrix.loc[a, b] = round(pmi, 4) # set cell value to pmi score 
         matrix.loc[b, a] = round(pmi, 4)
 
-    np.fill_diagonal(matrix.values, np.nan) # nan diagonal values 
+    for skill in matrix.index:
+        matrix.loc[skill, skill] = np.nan  # keep the diagonal empty for self-pairs
 
     fig, ax = plt.subplots(figsize=(9, 7))
     im = ax.imshow(matrix.values, aspect="auto", cmap="YlOrRd") 
