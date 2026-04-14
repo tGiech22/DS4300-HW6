@@ -6,16 +6,18 @@ import os, re
 from pathlib import Path
 from collections import defaultdict
 import matplotlib.pyplot as plt
-from wordcloud import WordCloud
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer 
 from nltk.corpus import stopwords
 from pymongo import MongoClient
 import numpy as np
 import argparse
 
+# Output path & global parameters
 FIGURES_DIR = Path("outputs/figures")
 MIN_POSTINGS = 15
 TOP_N = 10
+
+# Additional stopwords ourside of nltk corpus
 EXTRA_STOPWORDS = {
     "experience", "work", "working", "team", "role", "job",
     "skills", "ability", "strong", "knowledge", "using",

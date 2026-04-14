@@ -15,6 +15,7 @@ from matplotlib.transforms import blended_transform_factory
 import numpy as np                               
 import pandas as pd                              
 
+# Defines seniority group ordering for visualization
 SENIORITY_ORDER = [
     "Internship",
     "Entry level",
@@ -23,6 +24,10 @@ SENIORITY_ORDER = [
     "Director/Executive",
 ]
 
+# Defines list of skills for seniority visual
+DEFAULT_SENIORITY_SKILLS = ["SQL", "AWS", "Docker", "PyTorch", "LLM"]
+
+# Defines list of skills shown in role-skill heatmap
 DEFAULT_HEATMAP_SKILLS = [
     "Python",
     "SQL",
@@ -33,10 +38,8 @@ DEFAULT_HEATMAP_SKILLS = [
     "TensorFlow",
     "LLM",
 ]
-DEFAULT_STATE_SKILLS = ["AWS", "Azure", "GCP", "Docker", "Kubernetes"]
 
-DEFAULT_SENIORITY_SKILLS = ["SQL", "AWS", "Docker", "PyTorch", "LLM"]
-
+# Defines ordering of role groups for roke-skill heatmap
 ROLE_ORDER = [
     "Machine Learning Engineer",
     "Data Scientist",
@@ -47,6 +50,11 @@ ROLE_ORDER = [
     "Applied Scientist / Research",
 ]
 
+
+# Defines list of skills for state cloud visual
+DEFAULT_STATE_SKILLS = ["AWS", "Azure", "GCP", "Docker", "Kubernetes"]
+
+# Maps skill categories to colors for top-skills chart
 CATEGORY_COLORS = {
     "programming":      "#4C72B0",
     "ml_frameworks":    "#DD8452",
@@ -58,13 +66,16 @@ CATEGORY_COLORS = {
     "unknown":          "#CCCCCC",
 }
 
+# Defines subset of skills for the co-occurrence heatmap
 PMI_SKILLS = [
     "PyTorch", "TensorFlow", "LLM", "NLP",
     "Generative AI", "AWS", "Spark", "SQL",
 ]
 
-
 def parse_args() -> argparse.Namespace:
+    """
+    Parser to read MongoDB command-line connection & db arguments
+    """
     parser = argparse.ArgumentParser(
         description="Generate visualizations from analysis CSV outputs."
     )
@@ -86,14 +97,18 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def ensure_dir(path: str) -> Path:
+    """
+    Creates output directory for figures if nonexisting
+    """
     out = Path(path)
     out.mkdir(parents=True, exist_ok=True)
     return out
 
-
 def save_figure(fig: plt.Figure, out_dir: Path, stem: str) -> None:
+    """
+    Cleans up figure layout and saves chart as PDF & PNG, clears from memory
+    """
     fig.tight_layout()
     fig.savefig(out_dir / f"{stem}.png", dpi=300, bbox_inches="tight")
     fig.savefig(out_dir / f"{stem}.pdf", bbox_inches="tight")
@@ -101,6 +116,9 @@ def save_figure(fig: plt.Figure, out_dir: Path, stem: str) -> None:
 
 
 def load_csv(analysis_dir: Path, filename: str) -> pd.DataFrame:
+    """
+    Loads extracted CSV files into pandas DF
+    """
     path = analysis_dir / filename
     if not path.exists():
         raise FileNotFoundError(f"Missing required file: {path}")
@@ -113,12 +131,13 @@ def plot_top_skills(
         out_dir: Path, 
         top_n: int = 15
 ) -> None:
-    
+    """
+    Color coded horizontal bar chart of most common skills across included postings.
+    """
     # zip "skill" and "categories" columns into a dict 
     skill_to_cat = dict(zip(top_skills_cat_df["skill"], top_skills_cat_df["category"]))
 
-    # build skill -> category lookup from top_skills_by_category.csv
-    
+    # build skill -> category lookup from top_skills_by_category.csv 
     chart_df = (
         top_skills_df.sort_values(["posting_share", "posting_count"], ascending=[False, False])
         .head(top_n)
@@ -162,7 +181,10 @@ def plot_tfidf(
     tfidf_df: pd.DataFrame,
     out_dir: Path,
 ) -> None:
-    
+    """
+    Creates multi-panel horizontal bar chart showing top TF-IDF terms 
+    for each role group
+    """
     roles = tfidf_df["role"].unique()
     n_roles = len(roles)
     ncols = 2
@@ -187,6 +209,10 @@ def plot_tfidf(
 def plot_role_heatmap(
     df: pd.DataFrame, out_dir: Path, selected_skills: List[str]
 ) -> None:
+    """
+    Plots roll-skill heatmap, showing frequency of selected skills within each
+    role group.
+    """
     chart_df = df[df["skill"].isin(selected_skills)].copy()
 
     pivot = chart_df.pivot(
@@ -245,6 +271,10 @@ def plot_role_heatmap(
 def plot_state_bar_chart(
     df: pd.DataFrame, out_dir: Path, top_n: int = 10
 ) -> None:
+    """
+    Horizontal bar chart of states with highest share of postings
+    with atleast one cloud / platform skill.
+    """
     chart_df = (
         df.sort_values(
             ["cloud_any_share", "state_total_postings"],
@@ -280,6 +310,10 @@ def plot_seniority_grouped_bars(
     out_dir: Path,
     selected_skills: List[str],
 ) -> None:
+    """
+    Grouped bar chart comparing skill demand across different 
+    job posting seniority levels
+    """
     chart_df = df[df["skill"].isin(selected_skills)].copy()
     chart_df = chart_df[chart_df["seniority_group"].isin(SENIORITY_ORDER)].copy()
 
@@ -362,6 +396,10 @@ def plot_skill_cooccurrence_pmi(
     top_n: int = 8,
     exclude_skills: tuple[str, ...] = ("Python",),
 ) -> None:
+    """
+    PMI-based heatmap of skill co-occurence strength based on 
+    overall skill frequencies and pair counts.
+    """
     total = top_skills_df["posting_count"].sum()
     posting_count_map = dict(zip(top_skills_df["skill"], top_skills_df["posting_count"]))
 
@@ -409,6 +447,10 @@ def plot_skill_cooccurrence_pmi(
    
 
 def main() -> None:
+    """
+    Loads all required analysis CSVs, calls each plotting function, and 
+    saves final figures to output directory.
+    """
     args = parse_args()
     analysis_dir = Path(args.analysis_dir)
     figures_dir = ensure_dir(args.figures_dir)

@@ -1,5 +1,7 @@
-#!/usr/bin/env python3
-"""Load supported job postings CSV files into MongoDB."""
+"""
+Assignment: DS4300 Homework 6
+Written by: Tony Geich
+Function: Load the raw job postings CSV into MongoDB."""
 
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ from typing import Dict, Iterable, List, Optional, Sequence
 
 from pymongo import MongoClient, UpdateOne
 
-
+# CSV path - one level up from src for current repository
 DEFAULT_CSV = Path(__file__).resolve().parents[1] / "Job_Postings_US new.csv"
 ORIGINAL_SCHEMA = {
     "ID",
@@ -33,7 +35,7 @@ LINKEDIN_SCHEMA = {
     "experienceLevel",
 }
 
-
+# Parser to read MongoDB command-line connection args
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Load the raw job postings CSV into a MongoDB collection."
@@ -68,6 +70,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def clean_value(value: Optional[str]) -> Optional[str]:
+    """
+    Cleans CSV fields by removing blank space, returns None for missing values
+    """
     if value is None:
         return None
     normalized = value.strip()
@@ -137,6 +142,9 @@ def normalize_linkedin_row(
 
 
 def read_rows(csv_path: Path, source_name: str) -> Iterable[Dict[str, Optional[str]]]:
+    """
+    Converts csv rows to python dict, adds naming and ID
+    """
     with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         schema = detect_schema(reader.fieldnames or [])
@@ -150,6 +158,10 @@ def read_rows(csv_path: Path, source_name: str) -> Iterable[Dict[str, Optional[s
 def build_operations(
     rows: Iterable[Dict[str, Optional[str]]],
 ) -> List[UpdateOne]:
+    """
+    Converts cleaned dictionaries into MongoDO insertions, updating if already existing
+    or adding if nonexisting
+    """
     operations: List[UpdateOne] = []
     for row in rows:
         source_id = row.get("source_id")
@@ -166,6 +178,10 @@ def build_operations(
 
 
 def ensure_indexes(collection) -> None:
+    """
+    Creates MongoDB main index based on composite name & ID to avoid duplicates,
+    as well as secondary indexes on other relevant fields.
+    """
     collection.create_index([("source_name", 1), ("source_id", 1)], unique=True)
     collection.create_index("job_posted_date")
     collection.create_index("job_title")
@@ -173,6 +189,10 @@ def ensure_indexes(collection) -> None:
 
 
 def main() -> None:
+    """
+    Runs parser, checks for / reads & cleans CSV data, builds MongoDB operations, connects
+    to DB, ensures indexing, and loads documents into collections.
+    """
     args = parse_args()
     if not args.csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {args.csv_path}")
